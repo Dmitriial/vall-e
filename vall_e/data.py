@@ -162,7 +162,23 @@ class VALLEDatset(Dataset):
             path = self.paths[index]
 
         spkr_name = cfg.get_spkr(path)
-        text = torch.tensor([*map(self.phone_symmap.get, _get_phones(path))])
+
+        logging.info(f"loading phones from {path=}!")
+        phones = _get_phones(path)
+
+        default_value = self.phone_symmap["_"]
+        converted_phones = [*map(self.phone_symmap.get, phones)]
+        if None in set(converted_phones):
+            logging.warning(f"cannot parser one of the phones: {phones=}")
+            for index, c in enumerate(converted_phones):
+                if c is not None:
+                    continue
+
+                logging.warning(f"we don't know what a {phones[index]} is it")
+
+        converted_phones = [default_value if c is None else c for c in converted_phones]
+
+        text = torch.tensor(converted_phones)
         proms = self.sample_prompts(spkr_name, ignore=path)
         resps = _load_quants(path)
         resp = resps[..., 0]
