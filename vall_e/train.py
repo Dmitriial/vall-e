@@ -125,6 +125,9 @@ def main():
         # it's the easiest way to show progress of the model
         if _writer is not None:
             for k, v in stats.items():
+                if isinstance(v, str):
+                    continue
+
                 _writer.add_scalar(f"eval/{k}", v, global_step=engines.global_step)
 
         _logger.info(f"{json.dumps(stats)}.")
