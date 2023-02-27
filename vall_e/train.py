@@ -3,6 +3,7 @@ import logging
 from collections import defaultdict
 
 import torch
+from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 from .config import cfg
@@ -10,7 +11,11 @@ from .data import create_train_val_dataloader
 from .emb import qnt
 from .utils import setup_logging, to_device, trainer
 from .vall_e import get_model
+from typing import Optional
 
+
+# output dynamic data
+_writer: Optional[SummaryWriter] = None
 _logger = logging.getLogger(__name__)
 
 
@@ -62,7 +67,13 @@ def main():
 
     @torch.inference_mode()
     def run_eval(engines, name, dl):
-        log_dir = cfg.log_dir / str(engines.global_step) / name
+        global _writer
+
+        if _writer is None:
+            _writer = SummaryWriter(log_dir=cfg.tensorboard_root)
+
+        # it's duplicate here!
+        # log_dir = cfg.log_dir / str(engines.global_step) / name
 
         model = engines["model"]
         log_dir = cfg.log_dir / str(engines.global_step) / name
@@ -109,6 +120,12 @@ def main():
         stats["global_step"] = engines.global_step
         stats["name"] = name
         _logger.info(f"Eval: {stats}.")
+
+        # add output data for the eval mode here!
+        # it's the easiest way to show progress of the model
+        if _writer is not None:
+            for k, v in stats.items():
+                _writer.add_scalar(f"eval/{k}", v, global_step=engines.global_step)
 
         _logger.info(f"{json.dumps(stats)}.")
 
