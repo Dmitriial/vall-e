@@ -1,7 +1,7 @@
 import torch
 from einops import rearrange
 from torch import Tensor
-from tqdm import trange
+from tqdm.auto import trange
 
 from .base import Base
 

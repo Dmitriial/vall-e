@@ -1,18 +1,17 @@
 import json
 import logging
 from collections import defaultdict
+from typing import Optional
 
 import torch
 from torch.utils.tensorboard import SummaryWriter
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
-from .config import cfg
+from .config import get_cfg
 from .data import create_train_val_dataloader
 from .emb import qnt
 from .utils import setup_logging, to_device, trainer
 from .vall_e import get_model
-from typing import Optional
-
 
 # output dynamic data
 _writer: Optional[SummaryWriter] = None
@@ -20,40 +19,40 @@ _logger = logging.getLogger(__name__)
 
 
 def load_engines():
-    model = get_model(cfg.model)
+    model = get_model(get_cfg().model)
 
     engines = dict(
         model=trainer.Engine(
             model=model,
-            config=cfg.ds_cfg,
+            config=get_cfg().ds_cfg,
         ),
     )
 
-    return trainer.load_engines(engines, cfg)
+    return trainer.load_engines(engines, get_cfg())
 
 
 def main():
-    setup_logging(cfg.log_dir)
+    setup_logging(get_cfg().log_dir)
 
     train_dl, subtrain_dl, val_dl = create_train_val_dataloader()
 
     def train_feeder(engines, batch, name):
         model = engines["model"]
 
-        if cfg.model.startswith("ar"):
+        if get_cfg().model.startswith("ar"):
             _ = model(
                 text_list=batch["text"],
                 proms_list=batch["proms"],
                 resp_list=batch["resp"],
             )
-        elif cfg.model.startswith("nar"):
+        elif get_cfg().model.startswith("nar"):
             _ = model(
                 text_list=batch["text"],
                 proms_list=batch["proms"],
                 resps_list=batch["resps"],
             )
         else:
-            raise NotImplementedError(cfg.model)
+            raise NotImplementedError(get_cfg().model)
 
         losses = model.gather_attribute("loss")
 
@@ -70,34 +69,34 @@ def main():
         global _writer
 
         if _writer is None:
-            _writer = SummaryWriter(log_dir=cfg.tensorboard_root)
+            _writer = SummaryWriter(log_dir=str(get_cfg().tensorboard_root))
 
         # it's duplicate here!
         # log_dir = cfg.log_dir / str(engines.global_step) / name
 
         model = engines["model"]
-        log_dir = cfg.log_dir / str(engines.global_step) / name
+        log_dir = get_cfg().log_dir / str(engines.global_step) / name
         stats = defaultdict(list)
         for batch in tqdm(dl):
-            batch: dict = to_device(batch, cfg.device)
+            batch: dict = to_device(batch, get_cfg().device)
 
-            if cfg.model.startswith("ar"):
+            if get_cfg().model.startswith("ar"):
                 resp_list = model(
                     text_list=batch["text"],
                     proms_list=batch["proms"],
-                    max_steps=cfg.max_val_ar_steps,
-                    sampling_temperature=cfg.sampling_temperature,
+                    max_steps=get_cfg().max_val_ar_steps,
+                    sampling_temperature=get_cfg().sampling_temperature,
                 )
                 resps_list = [r.unsqueeze(-1) for r in resp_list]
-            elif cfg.model.startswith("nar"):
+            elif get_cfg().model.startswith("nar"):
                 resps_list = model(
                     text_list=batch["text"],
                     proms_list=batch["proms"],
                     resps_list=[r.unsqueeze(-1) for r in batch["resp"]],
-                    sampling_temperature=cfg.sampling_temperature,
+                    sampling_temperature=get_cfg().sampling_temperature,
                 )
             else:
-                raise NotImplementedError(cfg.model)
+                raise NotImplementedError(get_cfg().model)
 
             losses = model.gather_attribute("loss")
             batch_stats = {k: v.item() for k, v in losses.items()}
@@ -105,7 +104,7 @@ def main():
                 stats[k].append(v)
 
             for path, ref, hyp in zip(batch["path"], batch["resps"], resps_list):
-                relpath = path.relative_to(cfg.data_root)
+                relpath = path.relative_to(get_cfg().data_root)
                 hyp_path = (log_dir / "hyp" / relpath).with_suffix(".wav")
                 ref_path = (log_dir / "ref" / relpath).with_suffix(".wav")
                 hyp_path.parent.mkdir(parents=True, exist_ok=True)

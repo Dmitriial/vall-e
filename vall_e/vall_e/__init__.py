@@ -1,4 +1,4 @@
-from ..config import cfg
+from ..config import get_cfg
 from .ar import AR
 from .nar import NAR
 
@@ -15,14 +15,14 @@ def get_model(name):
 
     if "-quarter" in name:
         model = Model(
-            cfg.num_tokens,
+            get_cfg().num_tokens,
             d_model=256,
             n_heads=4,
             n_layers=12,
         )
     elif "-half" in name:
         model = Model(
-            cfg.num_tokens,
+            get_cfg().num_tokens,
             d_model=512,
             n_heads=8,
             n_layers=12,
@@ -32,7 +32,7 @@ def get_model(name):
             raise NotImplementedError(name)
 
         model = Model(
-            cfg.num_tokens,
+            get_cfg().num_tokens,
             d_model=1024,
             n_heads=16,
             n_layers=12,

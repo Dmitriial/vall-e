@@ -4,15 +4,15 @@ import random
 from collections import defaultdict
 from functools import cache, cached_property
 from itertools import groupby, zip_longest
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import torch
 from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
-from .config import cfg
+from .config import get_cfg
 from .sampler import Sampler
 
 torch.multiprocessing.set_sharing_strategy("file_system")
@@ -77,11 +77,14 @@ class VALLEDatset(Dataset):
         paths,
         phone_symmap=None,
         spkr_symmap=None,
-        min_phones=cfg.min_phones,
-        max_phones=cfg.max_phones,
+        min_phones=get_cfg().min_phones,
+        max_phones=get_cfg().max_phones,
         training=False,
-        extra_paths_by_spkr_name: dict[str, list] = {},
+        extra_paths_by_spkr_name: Optional[Dict[str, List]] = None,
     ):
+        if extra_paths_by_spkr_name is None:
+            extra_paths_by_spkr_name = {}
+
         super().__init__()
         self._head = None
         self.min_phones = min_phones
@@ -98,14 +101,14 @@ class VALLEDatset(Dataset):
         self.paths_by_spkr_name = self._get_paths_by_spkr_name(extra_paths_by_spkr_name)
 
         self.paths = [
-            p for p in self.paths if len(self.paths_by_spkr_name[cfg.get_spkr(p)]) > 1
+            p for p in self.paths if len(self.paths_by_spkr_name[get_cfg().get_spkr(p)]) > 1
         ]
 
         if len(self.paths) == 0 and training:
             raise ValueError("No valid path is found for training.")
 
         if training:
-            self.sampler = Sampler(self.paths, [cfg.get_spkr])
+            self.sampler = Sampler(self.paths, [get_cfg().get_spkr])
         else:
             self.sampler = None
 
@@ -113,7 +116,7 @@ class VALLEDatset(Dataset):
         ret = defaultdict(list)
         for path in self.paths:
             if _get_quant_path(path).exists():
-                ret[cfg.get_spkr(path)].append(path)
+                ret[get_cfg().get_spkr(path)].append(path)
         for k, v in extra_paths_by_spkr_name.items():
             ret[k].extend(v)
         return {**ret}
@@ -128,7 +131,7 @@ class VALLEDatset(Dataset):
 
     @cached_property
     def spkrs(self):
-        return sorted({cfg.get_spkr(path) for path in self.paths})
+        return sorted({get_cfg().get_spkr(path) for path in self.paths})
 
     def _get_spkr_symmap(self):
         return {s: i for i, s in enumerate(self.spkrs)}
@@ -144,10 +147,10 @@ class VALLEDatset(Dataset):
                 f"Failed to find another different utterance for {spkr_name}."
             )
 
-        for _ in range(cfg.max_prompts):
+        for _ in range(get_cfg().max_prompts):
             path = random.choice(choices)
             prom_list.append(_load_quants(path))
-            if random.random() > cfg.p_additional_prompt:
+            if random.random() > get_cfg().p_additional_prompt:
                 break
 
         prom = torch.cat(prom_list)
@@ -161,9 +164,9 @@ class VALLEDatset(Dataset):
         else:
             path = self.paths[index]
 
-        spkr_name = cfg.get_spkr(path)
+        spkr_name = get_cfg().get_spkr(path)
 
-        logging.info(f"loading phones from {path=}!")
+        logging.debug(f"loading phones from {path=}!")
         phones = _get_phones(path)
 
         default_value = self.phone_symmap["_"]
@@ -219,10 +222,10 @@ def _seed_worker(worker_id):
 def _create_dataloader(dataset, training):
     return DataLoader(
         dataset=dataset,
-        batch_size=cfg.batch_size if training else cfg.eval_batch_size,
+        batch_size=get_cfg().batch_size if training else get_cfg().eval_batch_size,
         shuffle=training,
         drop_last=training,
-        num_workers=cfg.nj,
+        num_workers=get_cfg().nj,
         collate_fn=collate_fn,
         persistent_workers=True,
         worker_init_fn=_seed_worker,
@@ -234,13 +237,13 @@ def _load_train_val_paths():
     train_paths = []
     val_paths = []
 
-    for data_dir in cfg.data_dirs:
+    for data_dir in get_cfg().data_dirs:
         paths.extend(tqdm(data_dir.rglob("*.qnt.pt")))
 
     if len(paths) == 0:
-        raise RuntimeError(f"Failed to find any .qnt.pt file in {cfg.data_dirs}.")
+        raise RuntimeError(f"Failed to find any .qnt.pt file in {get_cfg().data_dirs}.")
 
-    pairs = sorted([(cfg.get_spkr(p), p) for p in paths])
+    pairs = sorted([(get_cfg().get_spkr(p), p) for p in paths])
     del paths
 
     for _, group in groupby(pairs, lambda pair: pair[0]):
@@ -256,7 +259,7 @@ def _load_train_val_paths():
     return train_paths, val_paths
 
 
-@cfg.diskcache()
+@get_cfg().diskcache()
 def create_datasets():
     train_paths, val_paths = _load_train_val_paths()
 
@@ -272,8 +275,8 @@ def create_datasets():
         extra_paths_by_spkr_name=train_dataset.paths_by_spkr_name,
     )
 
-    val_dataset.interleaved_reorder_(cfg.get_spkr)
-    val_dataset.head_(cfg.max_num_val)
+    val_dataset.interleaved_reorder_(get_cfg().get_spkr)
+    val_dataset.head_(get_cfg().max_num_val)
 
     return train_dataset, val_dataset
 
@@ -291,8 +294,8 @@ def create_train_val_dataloader():
     _logger.info(f"#samples (val): {len(val_dataset)}.")
 
     subtrain_dataset = copy.deepcopy(train_dataset)
-    subtrain_dataset.interleaved_reorder_(cfg.get_spkr)
-    subtrain_dataset.head_(cfg.max_num_val)
+    subtrain_dataset.interleaved_reorder_(get_cfg().get_spkr)
+    subtrain_dataset.head_(get_cfg().max_num_val)
     subtrain_dataset.training_(False)
     subtrain_dl = _create_dataloader(subtrain_dataset, training=False)
     assert isinstance(subtrain_dl.dataset, VALLEDatset)

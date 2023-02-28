@@ -6,7 +6,7 @@ from pathlib import Path
 
 import torch
 from g2p_en import G2p
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 
 @cache

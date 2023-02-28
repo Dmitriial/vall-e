@@ -93,7 +93,24 @@ class Config(ConfigBase):
         return lambda: lambda x: x
 
 
-cfg = Config.from_cli()
+__cfg = Config.from_cli()
+
+
+def get_cfg() -> Config:
+    global __cfg
+    return __cfg
+
+
+def create_cfg(recreate: bool = False) -> None:
+    global __cfg
+
+    if recreate:
+        __cfg = Config.from_cli()
+        return
+
+    if __cfg is None:
+        __cfg = Config.from_cli()
+
 
 if __name__ == "__main__":
-    print(cfg)
+    print(__cfg)
