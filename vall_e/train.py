@@ -127,7 +127,7 @@ def main():
                 if isinstance(v, str):
                     continue
 
-                _writer.add_scalar(f"eval/{k}", v, global_step=engines.global_step)
+                _writer.add_scalar(f"{get_cfg().model}/eval/{k}", v, global_step=engines.global_step)
 
         _logger.info(f"{json.dumps(stats)}.")
 
