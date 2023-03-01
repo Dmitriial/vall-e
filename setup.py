@@ -54,7 +54,7 @@ setup(
         "torch>=1.13.0",
         "torchaudio>=0.13.0",
         "tqdm>=4.64.1",
-        "torchvision>=0.14.1",
+        "torchvision>=0.14.0",
         "tensorboard>=2.12.0",
     ],
     url="https://github.com/enhuiz/vall-e",
