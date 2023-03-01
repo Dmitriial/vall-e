@@ -1,3 +1,3 @@
 [submodule "mini_vall_e/utils"]
 	path = vall_e/utils
-	url = git@github.com:Dmitriial/pytorch-training-utilities.git
+	url = https://github.com/Dmitriial/pytorch-training-utilities.git
