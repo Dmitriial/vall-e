@@ -1,12 +1,15 @@
 import json
 import logging
+from typing import Tuple
+
+import numpy as np
 from collections import defaultdict
-from typing import Optional
 
 import torch
-from torch.utils.tensorboard import SummaryWriter
+from torch import Tensor
 from tqdm.auto import tqdm
 
+from vall_e.utils.engines import Stats
 from .config import get_cfg
 from .data import create_train_val_dataloader
 from .emb import qnt
@@ -14,7 +17,6 @@ from .utils import setup_logging, to_device, trainer
 from .vall_e import get_model
 
 # output dynamic data
-_writer: Optional[SummaryWriter] = None
 _logger = logging.getLogger(__name__)
 
 
@@ -36,7 +38,7 @@ def main():
 
     train_dl, subtrain_dl, val_dl = create_train_val_dataloader()
 
-    def train_feeder(engines, batch, name):
+    def train_feeder(engines, batch, name) -> Tuple[Tensor, Stats]:
         model = engines["model"]
 
         if get_cfg().model.startswith("ar"):
@@ -65,18 +67,12 @@ def main():
         return loss, stats
 
     @torch.inference_mode()
-    def run_eval(engines, name, dl):
-        global _writer
-
-        if _writer is None:
-            _writer = SummaryWriter(log_dir=str(get_cfg().tensorboard_root))
-
-        # it's duplicate here!
-        # log_dir = cfg.log_dir / str(engines.global_step) / name
-
+    def run_eval(engines, name, dl) -> Stats:
         model = engines["model"]
-        log_dir = get_cfg().log_dir / str(engines.global_step) / name
+        # log_dir = get_cfg().log_dir / str(engines.global_step) / name
         stats = defaultdict(list)
+
+        mse_losses = []
         for batch in tqdm(dl):
             batch: dict = to_device(batch, get_cfg().device)
 
@@ -98,42 +94,51 @@ def main():
             else:
                 raise NotImplementedError(get_cfg().model)
 
-            losses = model.gather_attribute("loss")
-            batch_stats = {k: v.item() for k, v in losses.items()}
-            for k, v in batch_stats.items():
-                stats[k].append(v)
+            # it doesn't work for the eval part
+            # losses = model.gather_attribute("loss")
+            # batch_stats = {k: v.item() for k, v in losses.items()}
+            # for k, v in batch_stats.items():
+            #     stats[k].append(v)
 
             for path, ref, hyp in zip(batch["path"], batch["resps"], resps_list):
-                relpath = path.relative_to(get_cfg().data_root)
-                hyp_path = (log_dir / "hyp" / relpath).with_suffix(".wav")
-                ref_path = (log_dir / "ref" / relpath).with_suffix(".wav")
-                hyp_path.parent.mkdir(parents=True, exist_ok=True)
-                ref_path.parent.mkdir(parents=True, exist_ok=True)
-                qnt.decode_to_file(ref, ref_path)
-                if len(hyp) > 0:
-                    qnt.decode_to_file(hyp, hyp_path)
+                # relpath = path.relative_to(get_cfg().data_root)
+                # hyp_path = (log_dir / "hyp" / relpath).with_suffix(".wav")
+                # ref_path = (log_dir / "ref" / relpath).with_suffix(".wav")
+                # hyp_path.parent.mkdir(parents=True, exist_ok=True)
+                # ref_path.parent.mkdir(parents=True, exist_ok=True)
+                # qnt.decode_to_file(ref, ref_path)
+                # if len(hyp) > 0:
+                #     qnt.decode_to_file(hyp, hyp_path)
+
+                # copy to CPU
+                ref_arr = ref.cpu().numpy()
+                hyp_arr = hyp.cpu().numpy()
+
+                # aggregate MSE error for [(8, ?) and (8, ?) arrays]
+                mse_losses.append(
+                    np.sqrt(np.sum(np.power(ref_arr - hyp_arr, 2)))
+                )
 
         qnt.unload_model()
 
         stats = {k: sum(v) / len(v) for k, v in stats.items()}
         stats["global_step"] = engines.global_step
         stats["name"] = name
-        _logger.info(f"Eval: {stats}.")
+        stats["loss"] = sum(mse_losses) / len(mse_losses)
 
         # add output data for the eval mode here!
         # it's the easiest way to show progress of the model
-        if _writer is not None:
-            for k, v in stats.items():
-                if isinstance(v, str):
-                    continue
-
-                _writer.add_scalar(f"{get_cfg().model}/eval/{k}", v, global_step=engines.global_step)
-
-        _logger.info(f"{json.dumps(stats)}.")
+        # _logger.info(f"{json.dumps(stats)}.")
+        return stats
 
     def eval_fn(engines):
-        run_eval(engines, "subtrain", subtrain_dl)
-        run_eval(engines, "val", val_dl)
+        stats_subtrain = run_eval(engines, "subtrain", subtrain_dl)
+        stats_val = run_eval(engines, "val", val_dl)
+
+        return {
+            'val_loss': stats_val['loss'],
+            'subtrain_loss': stats_subtrain['loss']
+        }
 
     trainer.train(
         engines_loader=load_engines,
