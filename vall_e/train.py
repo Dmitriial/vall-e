@@ -1,9 +1,6 @@
-import json
 import logging
-from typing import Tuple
-
-import numpy as np
 from collections import defaultdict
+from typing import Tuple
 
 import torch
 from torch import Tensor
@@ -69,10 +66,9 @@ def main():
     @torch.inference_mode()
     def run_eval(engines, name, dl) -> Stats:
         model = engines["model"]
-        # log_dir = get_cfg().log_dir / str(engines.global_step) / name
         stats = defaultdict(list)
 
-        mse_losses = []
+        aggregated_losses = []
         for batch in tqdm(dl):
             batch: dict = to_device(batch, get_cfg().device)
 
@@ -80,65 +76,39 @@ def main():
                 resp_list = model(
                     text_list=batch["text"],
                     proms_list=batch["proms"],
+                    resp_list=batch["resp"],
                     max_steps=get_cfg().max_val_ar_steps,
                     sampling_temperature=get_cfg().sampling_temperature,
                 )
-                resps_list = [r.unsqueeze(-1) for r in resp_list]
+                _ = [r.unsqueeze(-1) for r in resp_list]
             elif get_cfg().model.startswith("nar"):
-                resps_list = model(
+                _ = model(
                     text_list=batch["text"],
                     proms_list=batch["proms"],
-                    resps_list=[r.unsqueeze(-1) for r in batch["resp"]],
+                    resps_list=batch["resps"],
                     sampling_temperature=get_cfg().sampling_temperature,
                 )
             else:
                 raise NotImplementedError(get_cfg().model)
 
-            # it doesn't work for the eval part
-            # losses = model.gather_attribute("loss")
-            # batch_stats = {k: v.item() for k, v in losses.items()}
-            # for k, v in batch_stats.items():
-            #     stats[k].append(v)
-
-            for path, ref, hyp in zip(batch["path"], batch["resps"], resps_list):
-                # relpath = path.relative_to(get_cfg().data_root)
-                # hyp_path = (log_dir / "hyp" / relpath).with_suffix(".wav")
-                # ref_path = (log_dir / "ref" / relpath).with_suffix(".wav")
-                # hyp_path.parent.mkdir(parents=True, exist_ok=True)
-                # ref_path.parent.mkdir(parents=True, exist_ok=True)
-                # qnt.decode_to_file(ref, ref_path)
-                # if len(hyp) > 0:
-                #     qnt.decode_to_file(hyp, hyp_path)
-
-                # copy to CPU
-                ref_arr = ref.cpu().numpy()
-                hyp_arr = hyp.cpu().numpy()
-
-                # aggregate MSE error for [(8, ?) and (8, ?) arrays]
-                mse_losses.append(
-                    np.sqrt(np.sum(np.power(ref_arr - hyp_arr, 2)))
-                )
+            losses = model.gather_attribute("loss")
+            loss = sum([v.item() for k, v in losses.items()])
+            assert loss != 0, "It's a magic case. Exact accuracy!"
+            aggregated_losses.append(loss)
 
         qnt.unload_model()
 
         stats = {k: sum(v) / len(v) for k, v in stats.items()}
         stats["global_step"] = engines.global_step
         stats["name"] = name
-        stats["loss"] = sum(mse_losses) / len(mse_losses)
+        stats["loss"] = sum(aggregated_losses)
 
-        # add output data for the eval mode here!
-        # it's the easiest way to show progress of the model
-        # _logger.info(f"{json.dumps(stats)}.")
         return stats
 
     def eval_fn(engines):
-        stats_subtrain = run_eval(engines, "subtrain", subtrain_dl)
         stats_val = run_eval(engines, "val", val_dl)
 
-        return {
-            'val_loss': stats_val['loss'],
-            'subtrain_loss': stats_subtrain['loss']
-        }
+        return {'val_loss': stats_val['loss']}
 
     trainer.train(
         engines_loader=load_engines,
