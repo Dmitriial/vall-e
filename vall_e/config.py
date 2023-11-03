@@ -9,7 +9,6 @@ from .utils import Config as ConfigBase
 
 @dataclass(frozen=True)
 class Config(ConfigBase):
-    data_root: Path = Path("data")
     data_dirs: list[Path] = field(default_factory=lambda: [])
 
     @property
