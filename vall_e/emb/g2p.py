@@ -35,9 +35,10 @@ def main():
     parser.add_argument("--suffix", type=str, default=".normalized.txt")
     args = parser.parse_args()
 
-    paths = list(args.folder.rglob(f"*{args.suffix}"))
+    paths = list(args.folder.rglob(f"**/*{args.suffix}"))
     random.shuffle(paths)
 
+    # noinspection PyTypeChecker
     for path in tqdm(paths):
         phone_path = path.with_name(path.stem.split(".")[0] + ".phn.txt")
         if phone_path.exists():

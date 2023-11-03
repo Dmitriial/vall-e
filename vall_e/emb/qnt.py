@@ -80,9 +80,10 @@ def main():
     parser.add_argument("--suffix", default=".wav")
     args = parser.parse_args()
 
-    paths = [*args.folder.rglob(f"*{args.suffix}")]
+    paths = [*args.folder.rglob(f"**/*{args.suffix}")]
     random.shuffle(paths)
 
+    # noinspection PyTypeChecker
     for path in tqdm(paths):
         out_path = _replace_file_extension(path, ".qnt.pt")
         if out_path.exists():

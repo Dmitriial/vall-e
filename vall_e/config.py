@@ -101,15 +101,17 @@ def get_cfg() -> Config:
     return __cfg
 
 
-def create_cfg(recreate: bool = False) -> None:
+def create_cfg(data_root: Path, recreate: bool = False) -> None:
     global __cfg
 
     if recreate:
+        ConfigBase.root = data_root
         __cfg = Config.from_cli()
         return
 
     if __cfg is None:
         __cfg = Config.from_cli()
+        __cfg.root = data_root
 
 
 if __name__ == "__main__":
