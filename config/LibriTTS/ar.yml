@@ -4,6 +4,9 @@ spkr_name_getter: "lambda p: p.parts[-3]"
 model: ar
 batch_size: 24
 eval_batch_size: 24
-eval_every: 10_000
+eval_every: 10000
 
 sampling_temperature: 1.0
+early_stop: True
+early_stop_save_state: False
+early_stop_count: 200
