@@ -39,6 +39,8 @@ class Config(ConfigBase):
     model: str = "ar-quarter"
     spkr_name_getter: str = "lambda p: p.parts[-2]"
 
+    model_optimizer_name: str = "Adam"
+
     min_phones: int = 10
     max_phones: int = 50
 
@@ -64,7 +66,7 @@ class Config(ConfigBase):
             "train_micro_batch_size_per_gpu": self.batch_size,
             "gradient_accumulation_steps": self.gradient_accumulation_steps,
             "optimizer": {
-                "type": "Adam",
+                "type": self.model_optimizer_name,
                 "lr": self.warmup_min_lr,
             },
             "scheduler": {
