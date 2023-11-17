@@ -31,7 +31,7 @@ def load_engines():
 
 
 def main():
-    setup_logging(get_cfg().log_dir)
+    setup_logging(get_cfg().log_dir, log_level=get_cfg().log_level)
 
     train_dl, subtrain_dl, val_dl = create_train_val_dataloader()
 
