@@ -12,6 +12,8 @@ from encodec.utils import convert_audio
 from torch import Tensor
 from tqdm.auto import tqdm
 
+import numpy as np
+
 from ..config import get_cfg
 
 
@@ -85,11 +87,13 @@ def main():
 
     # noinspection PyTypeChecker
     for path in tqdm(paths):
-        out_path = _replace_file_extension(path, ".qnt.pt")
+        out_path = _replace_file_extension(path, ".npy")
         if out_path.exists():
             continue
+
         qnt = encode_from_file(path)
-        torch.save(qnt.cpu(), out_path)
+        np.save(out_path, qnt.cpu().numpy())
+        # torch.save(qnt.cpu(), out_path)
 
 
 if __name__ == "__main__":

@@ -25,7 +25,7 @@ def _replace_file_extension(path, suffix):
 
 
 def _get_quant_path(path):
-    return _replace_file_extension(path, ".qnt.pt")
+    return _replace_file_extension(path, ".npy")
 
 
 def _load_quants(path) -> Tensor:
@@ -34,7 +34,10 @@ def _load_quants(path) -> Tensor:
         quants: (t q)
     """
     path = _get_quant_path(path)
-    return torch.load(path)[0].t()
+    arr = np.load(path)
+
+    # return torch.load(path)[0].t()
+    return torch.from_numpy(arr)[0].t()
 
 
 @cache
@@ -238,10 +241,11 @@ def _load_train_val_paths():
     val_paths = []
 
     for data_dir in get_cfg().data_dirs:
-        paths.extend(tqdm(data_dir.rglob("**/*.qnt.pt")))
+        # noinspection PyTypeChecker
+        paths.extend(tqdm(data_dir.rglob("**/*.npy")))
 
     if len(paths) == 0:
-        raise RuntimeError(f"Failed to find any .qnt.pt file in {get_cfg().data_dirs}.")
+        raise RuntimeError(f"Failed to find any *.npy file in {get_cfg().data_dirs}.")
 
     pairs = sorted([(get_cfg().get_spkr(p), p) for p in paths])
     del paths
